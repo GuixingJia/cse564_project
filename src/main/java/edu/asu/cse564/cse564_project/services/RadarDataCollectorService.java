@@ -5,103 +5,95 @@ import edu.asu.cse564.cse564_project.domain.RadarSample;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicLong;
 
 /*
  * Radar Data Collector
  *
- * 职责：
- *  - 接收来自 Radar/LiDAR 的 RadarData（单位：mile / mph）
- *  - 生成带时间戳和 targetId 的 RadarSample
- *  - 维护上一帧的距离，用于判断是否还在有效区、车辆是接近还是远离
+ * Distance zones (meters):
  *
- * 逻辑（基于距离）：
- *  1. 保存上一轮输入的距离 lastDistanceMiles。
- *  2. 当前距离转换为米后：
- *     - 如果当前距离在 (-20m, 20m) 且大于上一轮距离（说明车辆在远离设备）→ 不再输出（不触发后续）
- *     - 如果当前距离 > 20m，说明车辆脱离有效监测区 → 不再输出
- *     - 其他情况：生成 RadarSample，交给后续的 SpeedViolationController 处理
+ *   d <= -150m          : OUT_OF_RANGE_BEFORE  → discard
+ *   -150m < d <= 20m    : ACTIVE_MONITOR_ZONE  → always forward samples
+ *   20m < d <= 90m      : LEAVING_ZONE         → forward ONLY the first sample that crosses >20m
+ *   d > 90m             : OUT_OF_RANGE_AFTER   → discard and reset state
+ *
+ * This implementation assumes a single tracked vehicle whose distance
+ * increases monotonically as it passes the device.
  */
 @Service
 public class RadarDataCollectorService {
 
-    // 有效区的距离阈值（米）
-    private static final double EFFECTIVE_ZONE_METERS = 20.0;
+    private static final double MIN_VALID_DISTANCE_METERS = -150.0;
+    private static final double CAPTURE_STOP_THRESHOLD_METERS = 20.0;
+    private static final double MAX_VALID_DISTANCE_METERS = 90.0;
 
-    private final UnitConversionService unitConversionService;
+    // Internal state for the current tracked vehicle
+    private Double lastDistanceMeters = null;
+    private boolean leavingEventSent = false;
 
-    // 简单的 targetId 生成器
-    private final AtomicLong targetIdSequence = new AtomicLong(0L);
-
-    // 记录上一帧的距离（单位：mile），初始为 null
-    private Double lastDistanceMiles = null;
-
-    public RadarDataCollectorService(UnitConversionService unitConversionService) {
-        this.unitConversionService = unitConversionService;
-    }
-
-    /*
-     * 处理一条来自雷达的原始数据，返回一个可选的 RadarSample。
-     * 如果根据距离判断不需要后续处理（比如车辆已经离开有效区），则返回 Optional.empty()。
-     *
-     * @param radarData raw radar input (distance in miles, speed in mph)
-     * @return Optional<RadarSample> - present only when the sample should
-     *         be forwarded to SpeedViolationController.
-     */
     public Optional<RadarSample> processRadarData(RadarData radarData) {
         if (radarData == null) {
             return Optional.empty();
         }
 
-        double currentDistanceMiles = radarData.getDistanceMiles();
-        double currentSpeedMph = radarData.getSpeedMph();
+        double distanceMeters = radarData.getDistanceMiles() * 1609.34;
+        double speedMph       = radarData.getSpeedMph();
 
-        // 将当前距离转换为米，用于与 (-20, 20) m 的几何区域比较
-        double currentDistanceMeters =
-                unitConversionService.milesToMeters(currentDistanceMiles);
-
-        Double previousDistanceMilesLocal = this.lastDistanceMiles;
-        double previousDistanceMeters =
-                previousDistanceMilesLocal == null
-                        ? Double.NaN
-                        : unitConversionService.milesToMeters(previousDistanceMilesLocal);
-
-        // 更新 lastDistanceMiles（无论是否输出，后续判断都需要）
-        this.lastDistanceMiles = currentDistanceMiles;
-
-        // 1) 如果当前距离 > 20m：车辆已经离开有效监测区，不再输出
-        if (currentDistanceMeters > EFFECTIVE_ZONE_METERS) {
+        // 0. Too far upstream: d <= -150m → discard and reset state
+        if (distanceMeters <= MIN_VALID_DISTANCE_METERS) {
+            resetState();
             return Optional.empty();
         }
 
-        // 2) 如果当前距离在 (-20m, 20m) 且上一帧存在，
-        //    并且当前距离 > 上一帧距离（车辆正在远离设备），也不再输出
-        if (!Double.isNaN(previousDistanceMeters)
-                && currentDistanceMeters > -EFFECTIVE_ZONE_METERS
-                && currentDistanceMeters < EFFECTIVE_ZONE_METERS
-                && currentDistanceMeters > previousDistanceMeters) {
+        // 4. Too far downstream: d > 90m → discard and reset state
+        if (distanceMeters > MAX_VALID_DISTANCE_METERS) {
+            resetState();
             return Optional.empty();
         }
 
-        // 3) 其他情况：生成一个 RadarSample 交给下游
-        long now = System.currentTimeMillis();
-        long targetId = targetIdSequence.incrementAndGet();
+        // 1. Active monitoring zone: -150m < d <= 20m
+        if (distanceMeters <= CAPTURE_STOP_THRESHOLD_METERS) {
+            // In this zone we always forward samples
+            RadarSample sample = buildSample(distanceMeters, speedMph);
+            // Update internal state
+            lastDistanceMeters = distanceMeters;
+            leavingEventSent = false; // still inside or before capture/stop threshold
+            return Optional.of(sample);
+        }
 
-        RadarSample sample = RadarSample.builder()
-                .distanceMiles(currentDistanceMiles)
-                .speedMph(currentSpeedMph)
-                .timestampMillis(now)
-                .targetId(targetId)
-                .build();
+        // 2. Leaving zone: 20m < d <= 90m
+        // We only want to forward the FIRST sample that crosses from <=20m to >20m.
+        boolean justCrossedBoundary =
+                lastDistanceMeters != null
+                        && lastDistanceMeters <= CAPTURE_STOP_THRESHOLD_METERS
+                        && distanceMeters > CAPTURE_STOP_THRESHOLD_METERS
+                        && !leavingEventSent;
 
-        return Optional.of(sample);
+        if (justCrossedBoundary) {
+            // Forward ONE "leaving" sample so that ECC can issue stop-capture.
+            RadarSample sample = buildSample(distanceMeters, speedMph);
+            lastDistanceMeters = distanceMeters;
+            leavingEventSent = true;
+            return Optional.of(sample);
+        }
+
+        // Already in leaving zone and we have sent the stop-capture event,
+        // or we started tracking when the vehicle was already >20m:
+        // do not forward any more samples.
+        lastDistanceMeters = distanceMeters;
+        return Optional.empty();
     }
 
-    /*
-     * 重置 collector 状态。
-     * 当检测到一辆车处理完毕后，可以调用此方法清理状态。
-     */
-    public void resetState() {
-        this.lastDistanceMiles = null;
+    private RadarSample buildSample(double distanceMeters, double speedMph) {
+        return RadarSample.builder()
+                .distanceMeters(distanceMeters)
+                .speedMph(speedMph)
+                .timestampMillis(System.currentTimeMillis())
+                .targetId(1L) // simplified single target
+                .build();
+    }
+
+    private void resetState() {
+        lastDistanceMeters = null;
+        leavingEventSent = false;
     }
 }

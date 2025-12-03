@@ -39,7 +39,7 @@ import org.springframework.stereotype.Service;
  *      => captureActive = FALSE
  *      => speedContext  = null
  *
- * 该实现假设（方案 C）：
+ * 该实现假设：
  *   - 对于每一辆被识别/跟踪的车辆，一旦它离开监控/抓拍区域，
  *     SpeedViolationController 一定会发送至少一次携带 distanceMeters >= 20m
  *     的 SpeedContext 给 ECC，从而保证 ECC 有机会发出 captureActive = FALSE。
