@@ -5,7 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/**
+/*
  * Camera frame data.
  * Uses timestamp in milliseconds; does not depend on U.S. units.
  */

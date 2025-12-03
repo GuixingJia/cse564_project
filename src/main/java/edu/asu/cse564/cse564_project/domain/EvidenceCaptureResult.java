@@ -7,19 +7,15 @@ import lombok.NoArgsConstructor;
 
 /**
  * Result structure returned by EvidenceCaptureControllerService.
- *
  * This structure maps directly to the SRC "capture_cmd" event
  * which drives both Camera and Flash simultaneously.
- *
  * captureActive:
  *   - TRUE  -> Start/continue capturing (Camera+Flash ON)
  *   - FALSE -> Stop capturing / enter sleep (Camera+Flash OFF)
  *   - null  -> No command issued for this sample
- *
  * speedContext:
  *   - Non-null -> Send to EvidenceCollectorAndPackager
  *   - Null     -> Do not forward
- *
  * This version fully supports Design Plan C:
  *   - SpeedViolationController ALWAYS sends an "end-of-tracking" context
  *     when the vehicle exits the monitored region (>= +20 meters).
@@ -33,7 +29,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class EvidenceCaptureResult {
 
-    /**
+    /*
      * Unified boolean command for Camera + Flash:
      *
      * TRUE  -> Capture active (turn ON)
@@ -42,7 +38,7 @@ public class EvidenceCaptureResult {
      */
     private Boolean captureActive;
 
-    /**
+    /*
      * Optional SpeedContext forwarded to the evidence packager.
      * Null means "do not forward".
      */

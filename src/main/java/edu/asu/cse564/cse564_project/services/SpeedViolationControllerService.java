@@ -7,10 +7,10 @@ import org.springframework.stereotype.Service;
 
 import java.util.Optional;
 
-/**
+/*
  * Speed Violation Controller
  *
- * 对应你设计中的组件：
+ * 对应组件：
  *  - 输入：RadarSample（来自 RadarDataCollector）
  *  - 输出：
  *      event(SpeedStatus) speed_status
@@ -26,10 +26,10 @@ import java.util.Optional;
 @Service
 public class SpeedViolationControllerService {
 
-    /** Base speed limit in mph (e.g., construction zone limit). */
+    // Base speed limit in mph (e.g., construction zone limit).
     private static final double SPEED_LIMIT_MPH = 40.0;
 
-    /** Tolerance ratio (10% over the speed limit). */
+    // Tolerance ratio (10% over the speed limit).
     private static final double TOLERANCE_RATIO = 0.10;
 
     private final UnitConversionService unitConversionService;
@@ -55,7 +55,6 @@ public class SpeedViolationControllerService {
 
     /**
      * 构造 SpeedContext，仅在 overspeed 时返回。
-     *
      * 如果没有超速，则返回 Optional.empty()，表示不会发出 overspeed_ctx 事件。
      *
      * @param sample enriched radar sample
@@ -84,7 +83,6 @@ public class SpeedViolationControllerService {
 
     /**
      * 内部方法：根据当前速度判断是否超速。
-     *
      * overspeed 条件：
      *   speed >= SPEED_LIMIT_MPH * (1 + TOLERANCE_RATIO)
      *

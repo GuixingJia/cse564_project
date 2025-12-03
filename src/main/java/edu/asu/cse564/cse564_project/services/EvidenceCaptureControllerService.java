@@ -50,7 +50,7 @@ public class EvidenceCaptureControllerService {
     // 抓拍窗口边界（单位：米）
     private static final double CAPTURE_WINDOW_METERS = 20.0;
 
-    /*
+    /**
      * Handle a SpeedContext from SpeedViolationController and decide:
      *   - 是否需要改变 Camera + Flash 的捕捉状态
      *   - 是否要将该 context 转发给证据打包组件

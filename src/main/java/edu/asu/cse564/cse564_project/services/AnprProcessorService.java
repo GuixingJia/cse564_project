@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Random;
 
-/**
+/*
  * ANPR Processor
  *
  * 对应设计中的组件：
@@ -25,7 +25,7 @@ public class AnprProcessorService {
 
     private final Random random = new Random();
 
-    /**
+    /*
      * 模拟车牌号数据库：你可以随时替换为更真实的。
      */
     private static final List<String> MOCK_PLATE_NUMBERS = Arrays.asList(

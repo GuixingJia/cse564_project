@@ -5,7 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/**
+/*
  * Final packaged violation record that will be uploaded
  * to the Central Backend System.
  *
@@ -26,44 +26,44 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class ViolationRecord {
 
-    /**
+    /*
      * Unique ID assigned by the roadside unit for this violation.
      * 简单实现：可以由服务端自增生成。
      */
     private String violationId;
 
-    /**
+    /*
      * License plate number recognized by ANPR.
      */
     private String plateNumber;
 
-    /**
+    /*
      * Vehicle speed in miles per hour (mph) at the time of violation.
      */
     private double speedMph;
 
-    /**
+    /*
      * Distance from the device in miles.
      */
     private double distanceMiles;
 
-    /**
+    /*
      * Distance from the device in meters (for analysis / reconstruction).
      */
     private double distanceMeters;
 
-    /**
+    /*
      * Timestamp of the violation event in milliseconds since Unix epoch.
      * 这里可以使用 SpeedContext 的 timestampMillis。
      */
     private long timestampMillis;
 
-    /**
+    /*
      * Target identifier from the radar tracking (if available).
      */
     private long targetId;
 
-    /**
+    /*
      * Captured image bytes associated with this violation.
      * 可以是从对应 CameraData 中取出的那一帧图片。
      */

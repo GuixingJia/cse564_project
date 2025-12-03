@@ -4,7 +4,7 @@ import edu.asu.cse564.cse564_project.domain.LedCommand;
 import edu.asu.cse564.cse564_project.domain.SpeedStatus;
 import org.springframework.stereotype.Service;
 
-/**
+/*
  * LED Display Controller
  *
  *   输入：SpeedStatus（来自 SpeedViolationController）

@@ -9,7 +9,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
-/**
+/*
  * Backend Up Link Controller
  *
  *   输入：ViolationRecord（来自 EvidenceCollectorAndPackager）
@@ -29,7 +29,7 @@ import java.util.UUID;
 @Service
 public class BackendUplinkControllerService {
 
-    /**
+    /*
      * Simple in-memory buffer simulating a local queue/cache
      * for violation records that have been "uploaded" or are
      * waiting to be confirmed.
@@ -37,7 +37,7 @@ public class BackendUplinkControllerService {
     private final List<ViolationRecord> localBuffer =
             Collections.synchronizedList(new ArrayList<>());
 
-    /**
+    /*
      * Simulate uploading a violation record to the central backend.
      *
      * @param record violation record produced by the packager

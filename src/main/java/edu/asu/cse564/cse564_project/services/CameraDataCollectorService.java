@@ -5,7 +5,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.Optional;
 
-/**
+/*
  * Camera Data Collector
  *
  * 对应设计中的组件：

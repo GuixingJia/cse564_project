@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *  - 生成带时间戳和 targetId 的 RadarSample
  *  - 维护上一帧的距离，用于判断是否还在有效区、车辆是接近还是远离
  *
- * 逻辑（对应你之前的描述）：
+ * 逻辑（基于距离）：
  *  1. 保存上一轮输入的距离 lastDistanceMiles。
  *  2. 当前距离转换为米后：
  *     - 如果当前距离在 (-20m, 20m) 且大于上一轮距离（说明车辆在远离设备）→ 不再输出（不触发后续）

@@ -9,7 +9,7 @@ import org.springframework.stereotype.Service;
 import java.util.Optional;
 import java.util.UUID;
 
-/**
+/*
  * Evidence Collector and Packager
  *
  *   输入：
@@ -20,7 +20,7 @@ import java.util.UUID;
  *   输出：
  *     - ViolationRecord（组合速度 + 车牌 + 图像 + 时间等信息）
  *
- * 设计假设：
+ * 假设：
  *   - 只有在车辆发生超速（overspeed == true）且位于监控/抓拍范围内时，
  *     上游才会调用本服务来打包记录；
  *   - 如果任何关键输入为空，当前实现会返回 Optional.empty()

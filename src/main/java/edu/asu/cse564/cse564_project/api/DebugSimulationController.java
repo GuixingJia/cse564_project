@@ -11,9 +11,7 @@ import java.util.Optional;
 
 /**
  * DebugSimulationController
- *
  * 提供调试用接口，串起整条流水线：
- *
  * RadarData -> RadarDataCollector -> RadarSample
  * -> SpeedViolationController (SpeedStatus + SpeedContext)
  * -> LEDDisplayController (LedCommand)
@@ -22,13 +20,10 @@ import java.util.Optional;
  * -> ANPR (PlateInfo)
  * -> EvidenceCollectorAndPackager (ViolationRecord)
  * -> BackendUpLinkController (UploadStatus)
- *
  * 1) /api/debug/simulate
  *    模拟一次“车辆超速并被抓拍上传”的完整流程（固定速度/距离）。
- *
  * 2) /api/debug/simulateNormal?speedMph=30
  *    模拟一次“车辆正常行驶（未超速）”的流程，只走到 LED。
- *
  * 3) /api/debug/simulateCase?speedMph=50&distanceMiles=0
  *    按输入的速度 + 距离组合，自动决定能走到哪一步，并给出结果。
  */
@@ -219,14 +214,11 @@ public class DebugSimulationController {
     // ============================================================
     /**
      * 组合测试：给定 speedMph + distanceMiles，查看系统会走到哪一步。
-     *
      * 示例：
      *   - /api/debug/simulateCase?speedMph=30&distanceMiles=0
      *       => 正常行驶 + 在抓拍区，should be no overspeed, 不触发证据链路
-     *
      *   - /api/debug/simulateCase?speedMph=50&distanceMiles=0
      *       => 超速 + 在抓拍区，完整违法流程
-     *
      *   - /api/debug/simulateCase?speedMph=50&distanceMiles=0.02
      *       => 超速 + 但可能远离抓拍窗口（取决于你 RadarDataCollector 的距离规则）
      */

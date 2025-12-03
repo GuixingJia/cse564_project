@@ -7,10 +7,8 @@ import lombok.NoArgsConstructor;
 
 /**
  * Command object sent from the LEDDisplayController to the physical LED display.
- *
  *   event(LedCommand) led_cmd
  *   led_cmd > led_ctrl_out, led_disp_in
- *
  * 这里把要展示的信息格式化成字符串，同时保留一些原始字段：
  *  - speedMph       当前速度
  *  - distanceMiles  当前距离
