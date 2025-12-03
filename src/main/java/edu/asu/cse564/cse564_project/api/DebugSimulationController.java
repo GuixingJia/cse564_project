@@ -24,10 +24,13 @@ import java.util.Optional;
  * -> BackendUpLinkController (UploadStatus)
  *
  * 1) /api/debug/simulate
- *    模拟一次“车辆超速并被抓拍上传”的完整流程。
+ *    模拟一次“车辆超速并被抓拍上传”的完整流程（固定速度/距离）。
  *
  * 2) /api/debug/simulateNormal?speedMph=30
- *    模拟一次“车辆正常行驶（未超速）”的流程，只走到 LED，后续链路不触发。
+ *    模拟一次“车辆正常行驶（未超速）”的流程，只走到 LED。
+ *
+ * 3) /api/debug/simulateCase?speedMph=50&distanceMiles=0
+ *    按输入的速度 + 距离组合，自动决定能走到哪一步，并给出结果。
  */
 @RestController
 public class DebugSimulationController {
@@ -61,22 +64,17 @@ public class DebugSimulationController {
         this.backendUplinkControllerService = backendUplinkControllerService;
     }
 
-    /**
-     * 1) 模拟一次“车辆超速并被抓拍上传”的完整流程。
-     *
-     * 访问：GET /api/debug/simulate
-     */
+    // ============================================================
+    // 1) 固定的“超速违法”完整流程
+    // ============================================================
     @GetMapping("/api/debug/simulate")
     public Map<String, Object> simulateOneViolation() {
 
-        // 1. 构造一条模拟的雷达输入：距离在抓拍区附近、速度明显超速
-        //    SpeedViolationController 中阈值 = 40 * 1.1 = 44 mph
         RadarData radarData = RadarData.builder()
                 .distanceMiles(0.0)  // 接近设备
-                .speedMph(50.0)      // 明显超速
+                .speedMph(50.0)      // 明显超速（> 44 mph 阈值）
                 .build();
 
-        // 2. Radar Data Collector
         Optional<RadarSample> maybeSample = radarDataCollectorService.processRadarData(radarData);
         if (maybeSample.isEmpty()) {
             return Map.of(
@@ -87,7 +85,6 @@ public class DebugSimulationController {
         }
         RadarSample sample = maybeSample.get();
 
-        // 3. Speed Violation Controller
         SpeedStatus speedStatus = speedViolationControllerService.buildSpeedStatus(sample);
         Optional<SpeedContext> maybeCtx = speedViolationControllerService.buildOverspeedContext(sample);
         if (maybeCtx.isEmpty()) {
@@ -100,10 +97,8 @@ public class DebugSimulationController {
         }
         SpeedContext speedContext = maybeCtx.get();
 
-        // 4. LED Display Controller
         LedCommand ledCommand = ledDisplayControllerService.buildLedCommand(speedStatus);
 
-        // 5. Evidence Capture Controller
         EvidenceCaptureResult eccResult = evidenceCaptureControllerService.handleSpeedContext(speedContext);
         Boolean captureActive = eccResult.getCaptureActive();
         if (!Boolean.TRUE.equals(captureActive)) {
@@ -126,14 +121,12 @@ public class DebugSimulationController {
             );
         }
 
-        // 6. 构造模拟的 CameraData
-        byte[] fakeImage = "fakeImageBytes".getBytes(); // 仅测试用
+        byte[] fakeImage = "fakeImageBytes".getBytes();
         CameraData rawCameraData = CameraData.builder()
                 .imageBytes(fakeImage)
                 .timestampMillis(System.currentTimeMillis())
                 .build();
 
-        // Camera Data Collector
         Optional<CameraData> maybeProcessedFrame = cameraDataCollectorService.processCameraFrame(rawCameraData);
         if (maybeProcessedFrame.isEmpty()) {
             return Map.of(
@@ -144,7 +137,6 @@ public class DebugSimulationController {
         }
         CameraData processedFrame = maybeProcessedFrame.get();
 
-        // 7. ANPR Processor
         Optional<PlateInfo> maybePlate = anprProcessorService.processFrame(processedFrame);
         if (maybePlate.isEmpty()) {
             return Map.of(
@@ -155,7 +147,6 @@ public class DebugSimulationController {
         }
         PlateInfo plateInfo = maybePlate.get();
 
-        // 8. Evidence Collector & Packager
         Optional<ViolationRecord> maybeRecord =
                 evidenceCollectorAndPackagerService.buildViolationRecord(
                         ctxForPackager,
@@ -172,10 +163,8 @@ public class DebugSimulationController {
         }
         ViolationRecord record = maybeRecord.get();
 
-        // 9. Backend Up Link Controller
         UploadStatus uploadStatus = backendUplinkControllerService.uploadViolationRecord(record);
 
-        // 10. 汇总输出
         return Map.of(
                 "success", true,
                 "mode", "overspeed-violation",
@@ -187,24 +176,19 @@ public class DebugSimulationController {
         );
     }
 
-    /**
-     * 2) 模拟一次“车辆正常行驶（未超速）”流程。
-     *
-     * 访问：GET /api/debug/simulateNormal?speedMph=30
-     * speedMph 参数可选，默认 30 mph。
-     */
+    // ============================================================
+    // 2) 正常行驶（未超速）流程测试
+    // ============================================================
     @GetMapping("/api/debug/simulateNormal")
     public Map<String, Object> simulateNormalDriving(
             @RequestParam(name = "speedMph", defaultValue = "30.0") double speedMph
     ) {
 
-        // 1. 构造一条模拟的雷达输入：速度低于超速阈值
         RadarData radarData = RadarData.builder()
-                .distanceMiles(0.0)   // 在工作区附近
-                .speedMph(speedMph)   // 默认 30 mph，低于 44 mph 阈值
+                .distanceMiles(0.0)
+                .speedMph(speedMph)
                 .build();
 
-        // 2. Radar Data Collector
         Optional<RadarSample> maybeSample = radarDataCollectorService.processRadarData(radarData);
         if (maybeSample.isEmpty()) {
             return Map.of(
@@ -215,21 +199,185 @@ public class DebugSimulationController {
         }
         RadarSample sample = maybeSample.get();
 
-        // 3. Speed Violation Controller
         SpeedStatus speedStatus = speedViolationControllerService.buildSpeedStatus(sample);
         Optional<SpeedContext> maybeCtx = speedViolationControllerService.buildOverspeedContext(sample);
 
-        // 4. LED Display Controller
         LedCommand ledCommand = ledDisplayControllerService.buildLedCommand(speedStatus);
 
-        // 5. 返回结果：正常行驶 -> 不应产生 overspeed context，不触发后续链路
         return Map.of(
                 "success", true,
                 "mode", "normal-driving",
                 "inputSpeedMph", speedMph,
-                "overspeedContextPresent", maybeCtx.isPresent(),  // 这里按设计应为 false
+                "overspeedContextPresent", maybeCtx.isPresent(),  // 正常情况下应为 false
                 "ledMessage", ledCommand.getMessage(),
                 "speedStatus", speedStatus
         );
+    }
+
+    // ============================================================
+    // 3) 速度 + 距离组合测试
+    // ============================================================
+    /**
+     * 组合测试：给定 speedMph + distanceMiles，查看系统会走到哪一步。
+     *
+     * 示例：
+     *   - /api/debug/simulateCase?speedMph=30&distanceMiles=0
+     *       => 正常行驶 + 在抓拍区，should be no overspeed, 不触发证据链路
+     *
+     *   - /api/debug/simulateCase?speedMph=50&distanceMiles=0
+     *       => 超速 + 在抓拍区，完整违法流程
+     *
+     *   - /api/debug/simulateCase?speedMph=50&distanceMiles=0.02
+     *       => 超速 + 但可能远离抓拍窗口（取决于你 RadarDataCollector 的距离规则）
+     */
+    @GetMapping("/api/debug/simulateCase")
+    public Map<String, Object> simulateCustomCase(
+            @RequestParam(name = "speedMph") double speedMph,
+            @RequestParam(name = "distanceMiles") double distanceMiles
+    ) {
+
+        // 1. 构造 RadarData
+        RadarData radarData = RadarData.builder()
+                .distanceMiles(distanceMiles)
+                .speedMph(speedMph)
+                .build();
+
+        // 2. Radar Data Collector
+        Optional<RadarSample> maybeSample = radarDataCollectorService.processRadarData(radarData);
+        if (maybeSample.isEmpty()) {
+            return Map.of(
+                    "success", true,   // 对测试来说，这也是一种“预期行为”
+                    "mode", "custom-case",
+                    "stage", "RadarDataCollector",
+                    "reason", "Sample filtered out by RadarDataCollector.",
+                    "inputSpeedMph", speedMph,
+                    "inputDistanceMiles", distanceMiles
+            );
+        }
+        RadarSample sample = maybeSample.get();
+
+        // 3. Speed Violation Controller
+        SpeedStatus speedStatus = speedViolationControllerService.buildSpeedStatus(sample);
+        Optional<SpeedContext> maybeCtx = speedViolationControllerService.buildOverspeedContext(sample);
+        boolean overspeed = maybeCtx.isPresent();
+
+        // 4. LED 显示
+        LedCommand ledCommand = ledDisplayControllerService.buildLedCommand(speedStatus);
+
+        // 如果没有 overspeed，直接返回，不触发后续链路
+        if (!overspeed) {
+            return Map.of(
+                    "success", true,
+                    "mode", "custom-case-no-overspeed",
+                    "inputSpeedMph", speedMph,
+                    "inputDistanceMiles", distanceMiles,
+                    "overspeed", false,
+                    "captureActive", null,
+                    "violationRecordPresent", false,
+                    "uploadSuccess", false,
+                    "ledMessage", ledCommand.getMessage(),
+                    "speedStatus", speedStatus
+            );
+        }
+
+        // 5. overspeed 情况 -> 调用 ECC
+        SpeedContext speedContext = maybeCtx.get();
+        EvidenceCaptureResult eccResult = evidenceCaptureControllerService.handleSpeedContext(speedContext);
+        Boolean captureActive = eccResult.getCaptureActive();
+        SpeedContext ctxForPackager = eccResult.getSpeedContext();
+
+        // 如果 ECC 没有激活捕捉（例如距离 <= -20 或 >= 20），则不再继续证据链路
+        if (!Boolean.TRUE.equals(captureActive) || ctxForPackager == null) {
+            return Map.of(
+                    "success", true,
+                    "mode", "custom-case-overspeed-no-capture",
+                    "inputSpeedMph", speedMph,
+                    "inputDistanceMiles", distanceMiles,
+                    "overspeed", true,
+                    "captureActive", captureActive,
+                    "violationRecordPresent", false,
+                    "uploadSuccess", false,
+                    "ledMessage", ledCommand.getMessage(),
+                    "speedStatus", speedStatus
+            );
+        }
+
+        // 6. 进入完整证据链路：Camera -> ANPR -> Packager -> Uplink
+        byte[] fakeImage = "fakeImageBytes".getBytes();
+        CameraData rawCameraData = CameraData.builder()
+                .imageBytes(fakeImage)
+                .timestampMillis(System.currentTimeMillis())
+                .build();
+
+        Optional<CameraData> maybeProcessedFrame = cameraDataCollectorService.processCameraFrame(rawCameraData);
+        if (maybeProcessedFrame.isEmpty()) {
+            return Map.of(
+                    "success", true,
+                    "mode", "custom-case-overspeed-camera-rejected",
+                    "inputSpeedMph", speedMph,
+                    "inputDistanceMiles", distanceMiles,
+                    "overspeed", true,
+                    "captureActive", captureActive,
+                    "violationRecordPresent", false,
+                    "uploadSuccess", false,
+                    "ledMessage", ledCommand.getMessage()
+            );
+        }
+        CameraData processedFrame = maybeProcessedFrame.get();
+
+        Optional<PlateInfo> maybePlate = anprProcessorService.processFrame(processedFrame);
+        if (maybePlate.isEmpty()) {
+            return Map.of(
+                    "success", true,
+                    "mode", "custom-case-overspeed-no-plate",
+                    "inputSpeedMph", speedMph,
+                    "inputDistanceMiles", distanceMiles,
+                    "overspeed", true,
+                    "captureActive", captureActive,
+                    "violationRecordPresent", false,
+                    "uploadSuccess", false,
+                    "ledMessage", ledCommand.getMessage()
+            );
+        }
+        PlateInfo plateInfo = maybePlate.get();
+
+        Optional<ViolationRecord> maybeRecord =
+                evidenceCollectorAndPackagerService.buildViolationRecord(
+                        ctxForPackager,
+                        plateInfo,
+                        processedFrame
+                );
+
+        if (maybeRecord.isEmpty()) {
+            return Map.of(
+                    "success", true,
+                    "mode", "custom-case-overspeed-no-record",
+                    "inputSpeedMph", speedMph,
+                    "inputDistanceMiles", distanceMiles,
+                    "overspeed", true,
+                    "captureActive", captureActive,
+                    "violationRecordPresent", false,
+                    "uploadSuccess", false,
+                    "ledMessage", ledCommand.getMessage()
+            );
+        }
+        ViolationRecord record = maybeRecord.get();
+
+        UploadStatus uploadStatus = backendUplinkControllerService.uploadViolationRecord(record);
+
+        return Map.ofEntries(
+                Map.entry("success", true),
+                Map.entry("mode", "custom-case-overspeed-full"),
+                Map.entry("inputSpeedMph", speedMph),
+                Map.entry("inputDistanceMiles", distanceMiles),
+                Map.entry("overspeed", true),
+                Map.entry("captureActive", captureActive),
+                Map.entry("violationRecordPresent", true),
+                Map.entry("uploadSuccess", uploadStatus.isSuccess()),
+                Map.entry("ledMessage", ledCommand.getMessage()),
+                Map.entry("violationRecord", record),
+                Map.entry("uploadStatus", uploadStatus)
+        );
+
     }
 }
