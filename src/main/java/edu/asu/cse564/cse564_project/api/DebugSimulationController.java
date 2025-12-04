@@ -32,25 +32,6 @@ import java.util.Optional;
  *   -20m < d < 20m            : CAPTURE_WINDOW       → 抓拍取证窗口，ECC 抓拍
  *   d >= 20m 且 d <= 90m      : LEAVING_STOP_CAPTURE → 离开抓拍区，ECC 停止抓拍（仅第一次 >20m 的样本会向后传）
  *   d > 90m                   : OUT_OF_RANGE_AFTER   → Radar 丢弃并 reset 状态
- *
- * 提供 3 个测试 API：
- *
- * 1) 固定的“超速完整违法流程”：
- *    GET  http://localhost:8080/api/debug/simulate
- *
- * 2) 正常行驶（可调速度）：
- *    GET  http://localhost:8080/api/debug/simulateNormal
- *    GET  http://localhost:8080/api/debug/simulateNormal?speedMph=42
- *
- * 3) 速度 + 距离组合测试（核心调试接口）：
- *    GET http://localhost:8080/api/debug/simulateCase?speedMph=48&distanceMiles=-0.5
- *    GET  distanceMiles=-0.1      (~ -160m, 应被 Radar 丢弃)
- *    GET  distanceMiles=-0.0621   (~ -100m, 粗测区 COARSE_ONLY)
- *    GET  distanceMiles=-0.0311   (~ -50m, 监测区 MONITOR_ONLY)
- *    GET  distanceMiles=-0.0062   (~ -10m, 抓拍窗口 CAPTURE_WINDOW)
- *    GET  distanceMiles=0         (0m, 抓拍窗口 CAPTURE_WINDOW)
- *    GET  distanceMiles=0.0062    (~ +10m, 抓拍窗口 CAPTURE_WINDOW)
- *    GET  distanceMiles=0.0155    (~ +25m, LEAVING_STOP_CAPTURE → 停止抓拍)
  */
 @RestController
 public class DebugSimulationController {
@@ -63,6 +44,7 @@ public class DebugSimulationController {
     private final AnprProcessorService anprProcessorService;
     private final EvidenceCollectorAndPackagerService evidenceCollectorAndPackagerService;
     private final BackendUplinkControllerService backendUplinkControllerService;
+    private final UnitConversionService unitConversionService;
 
     public DebugSimulationController(
             RadarDataCollectorService radarDataCollectorService,
@@ -72,7 +54,8 @@ public class DebugSimulationController {
             CameraDataCollectorService cameraDataCollectorService,
             AnprProcessorService anprProcessorService,
             EvidenceCollectorAndPackagerService evidenceCollectorAndPackagerService,
-            BackendUplinkControllerService backendUplinkControllerService
+            BackendUplinkControllerService backendUplinkControllerService,
+            UnitConversionService unitConversionService
     ) {
         this.radarDataCollectorService = radarDataCollectorService;
         this.speedViolationControllerService = speedViolationControllerService;
@@ -82,6 +65,7 @@ public class DebugSimulationController {
         this.anprProcessorService = anprProcessorService;
         this.evidenceCollectorAndPackagerService = evidenceCollectorAndPackagerService;
         this.backendUplinkControllerService = backendUplinkControllerService;
+        this.unitConversionService = unitConversionService;
     }
 
     // ============================================================
@@ -234,8 +218,8 @@ public class DebugSimulationController {
     ) {
         Map<String, Object> result = new LinkedHashMap<>();
 
-        // miles -> meters
-        double distanceMeters = distanceMiles * 1609.34;
+        // 使用统一的转换服务 miles -> meters
+        double distanceMeters = unitConversionService.milesToMeters(distanceMiles);
 
         final double MIN_VALID_METERS = -150.0;
         final double CAPTURE_WINDOW_HALF_METERS = 20.0;
@@ -285,17 +269,17 @@ public class DebugSimulationController {
         // 2) SpeedViolationController
         SpeedStatus speedStatus = speedViolationControllerService.buildSpeedStatus(sample);
         Optional<SpeedContext> maybeCtx = speedViolationControllerService.buildOverspeedContext(sample);
-        boolean overspeed = maybeCtx.isPresent();
+        boolean overspeedContextPresent = maybeCtx.isPresent();
 
         LedCommand ledCommand = ledDisplayControllerService.buildLedCommand(speedStatus);
 
         result.put("stage", "SpeedViolationController");
         result.put("speedStatus", speedStatus);
-        result.put("isOverspeed", overspeed);
+        result.put("isOverspeed", overspeedContextPresent);
         result.put("ledMessage", ledCommand.getMessage());
 
-        // 不超速：不进入 ECC / 证据链路
-        if (!overspeed) {
+        // 不超速或还在粗测区：不进入 ECC / 证据链路
+        if (!overspeedContextPresent) {
             result.put("reason", "Not overspeed or still in coarse-only zone; ECC and evidence pipeline not triggered.");
             result.put("captureActive", null);
             result.put("violationRecordPresent", false);
@@ -385,7 +369,7 @@ public class DebugSimulationController {
             return result;
         }
 
-        // 理论上不会到这里，如果到了说明状态组合不符合预期
+        // 到这里就说明状态组合不符合预期
         result.put("reason", "Unexpected ECC state combination.");
         result.put("violationRecordPresent", false);
         result.put("uploadSuccess", false);

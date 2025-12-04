@@ -26,16 +26,24 @@ public class RadarDataCollectorService {
     private static final double CAPTURE_STOP_THRESHOLD_METERS = 20.0;
     private static final double MAX_VALID_DISTANCE_METERS = 90.0;
 
-    // Internal state for the current tracked vehicle
+    // Internal state for the current tracked vehicle (in meters)
     private Double lastDistanceMeters = null;
     private boolean leavingEventSent = false;
+
+    private final UnitConversionService unitConversionService;
+
+    public RadarDataCollectorService(UnitConversionService unitConversionService) {
+        this.unitConversionService = unitConversionService;
+    }
 
     public Optional<RadarSample> processRadarData(RadarData radarData) {
         if (radarData == null) {
             return Optional.empty();
         }
 
-        double distanceMeters = radarData.getDistanceMiles() * 1609.34;
+        // 外部输入是英里，这里显式拆成 miles 和 meters 两种表示
+        double distanceMiles  = radarData.getDistanceMiles();
+        double distanceMeters = unitConversionService.milesToMeters(distanceMiles);
         double speedMph       = radarData.getSpeedMph();
 
         // 0. Too far upstream: d <= -150m → discard and reset state
@@ -53,8 +61,8 @@ public class RadarDataCollectorService {
         // 1. Active monitoring zone: -150m < d <= 20m
         if (distanceMeters <= CAPTURE_STOP_THRESHOLD_METERS) {
             // In this zone we always forward samples
-            RadarSample sample = buildSample(distanceMeters, speedMph);
-            // Update internal state
+            RadarSample sample = buildSample(distanceMiles, speedMph);
+            // Update internal state (用 meters 记录轨迹位置)
             lastDistanceMeters = distanceMeters;
             leavingEventSent = false; // still inside or before capture/stop threshold
             return Optional.of(sample);
@@ -70,7 +78,7 @@ public class RadarDataCollectorService {
 
         if (justCrossedBoundary) {
             // Forward ONE "leaving" sample so that ECC can issue stop-capture.
-            RadarSample sample = buildSample(distanceMeters, speedMph);
+            RadarSample sample = buildSample(distanceMiles, speedMph);
             lastDistanceMeters = distanceMeters;
             leavingEventSent = true;
             return Optional.of(sample);
@@ -83,9 +91,9 @@ public class RadarDataCollectorService {
         return Optional.empty();
     }
 
-    private RadarSample buildSample(double distanceMeters, double speedMph) {
+    private RadarSample buildSample(double distanceMiles, double speedMph) {
         return RadarSample.builder()
-                .distanceMeters(distanceMeters)
+                .distanceMiles(distanceMiles)          // 这里是真正的“英里”值
                 .speedMph(speedMph)
                 .timestampMillis(System.currentTimeMillis())
                 .targetId(1L) // simplified single target
