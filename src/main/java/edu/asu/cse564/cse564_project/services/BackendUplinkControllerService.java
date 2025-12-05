@@ -10,42 +10,28 @@ import java.util.List;
 import java.util.UUID;
 
 /*
- * Backend Up Link Controller
+ * BackendUplinkControllerService
  *
- *   输入：ViolationRecord（来自 EvidenceCollectorAndPackager）
- *   输出：上传到 Central Backend System，并返回 UploadStatus
- *
- * 当前实现为模拟：
- *   - 用一个本地内存列表 buffer 当作“待上传队列/本地缓存”
- *   - uploadViolationRecord(...) 会：
- *       1. 简单检查 ViolationRecord 是否有效
- *       2. 将其加入本地缓存
- *       3. 模拟“上传成功”，生成一个 backendRecordId
- *
- * 如果要接真实后端，在这里：
- *   - 使用 HTTP 客户端（RestTemplate/WebClient）调用远程服务
- *   - 在失败时重试并更新 retryCount
+ * Simulates uploading violation records to a central backend system.
+ * This mock implementation stores records in an in-memory buffer and
+ * generates a fake backendRecordId. In a real deployment, this service
+ * would make network calls, handle retries, and return backend responses.
  */
 @Service
 public class BackendUplinkControllerService {
 
-    /*
-     * Simple in-memory buffer simulating a local queue/cache
-     * for violation records that have been "uploaded" or are
-     * waiting to be confirmed.
-     */
+    // Local in-memory buffer simulating a persistent upload queue
     private final List<ViolationRecord> localBuffer =
             Collections.synchronizedList(new ArrayList<>());
 
     /*
-     * Simulate uploading a violation record to the central backend.
-     *
-     * @param record violation record produced by the packager
-     * @return UploadStatus describing the outcome
+     * Simulates uploading a violation record to a backend system.
+     * Returns an UploadStatus describing the outcome.
      */
     public UploadStatus uploadViolationRecord(ViolationRecord record) {
         long now = System.currentTimeMillis();
 
+        // Reject null input
         if (record == null) {
             return UploadStatus.builder()
                     .success(false)
@@ -56,14 +42,10 @@ public class BackendUplinkControllerService {
                     .build();
         }
 
-        //   - 实际 HTTP 调用远程后端
-        //   - 捕获异常并进行重试
-        //   - 根据后端返回的 ID 填充 backendRecordId
-        // 当前简化为：认为上传总是成功，并生成一个模拟 backendRecordId。
-
+        // Generate a fake backend record ID (simulated success)
         String backendRecordId = UUID.randomUUID().toString();
 
-        // 将记录加入本地缓冲（模拟已上传的本地备份）
+        // Store the record in the local buffer
         localBuffer.add(record);
 
         return UploadStatus.builder()
@@ -76,8 +58,8 @@ public class BackendUplinkControllerService {
     }
 
     /*
-     * For debugging / monitoring:
-     * 返回当前本地缓存中的所有违章记录的快照。
+     * Returns a snapshot of all locally stored violation records.
+     * Useful for debugging and monitoring.
      */
     public List<ViolationRecord> getBufferedRecordsSnapshot() {
         synchronized (localBuffer) {
@@ -86,7 +68,7 @@ public class BackendUplinkControllerService {
     }
 
     /*
-     * 清空本地缓存，用于测试或重置系统状态。
+     * Clears the local buffer. Used for testing or resetting system state.
      */
     public void clearBuffer() {
         localBuffer.clear();

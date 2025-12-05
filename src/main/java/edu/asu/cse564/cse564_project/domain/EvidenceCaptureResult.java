@@ -5,23 +5,22 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/**
- * Result structure returned by EvidenceCaptureControllerService.
- * This structure maps directly to the SRC "capture_cmd" event
- * which drives both Camera and Flash simultaneously.
- * captureActive:
- *   - TRUE  -> Start/continue capturing (Camera+Flash ON)
- *   - FALSE -> Stop capturing / enter sleep (Camera+Flash OFF)
- *   - null  -> No command issued for this sample
+/*
+ * EvidenceCaptureResult
+ *
+ * Represents the output decision produced by the EvidenceCaptureController.
+ * It combines two aspects:
+ *   - captureActive: a unified command signal to control Camera + Flash
+ *   - speedContext: optional contextual data forwarded for evidence packaging
+ *
+ * captureActive values:
+ *   TRUE  — enable or continue capture
+ *   FALSE — disable capture and enter sleep
+ *   null  — no change to current hardware state
+ *
  * speedContext:
- *   - Non-null -> Send to EvidenceCollectorAndPackager
- *   - Null     -> Do not forward
- * This version fully supports Design Plan C:
- *   - SpeedViolationController ALWAYS sends an "end-of-tracking" context
- *     when the vehicle exits the monitored region (>= +20 meters).
- *   - EvidenceCaptureController uses distanceMeters to issue an explicit
- *     stop command (captureActive = FALSE), ensuring Flash & Camera are
- *     always turned off reliably.
+ *   non-null — should be forwarded to the evidence collector
+ *   null     — no evidence packaging for this sample
  */
 @Data
 @Builder
@@ -29,18 +28,9 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class EvidenceCaptureResult {
 
-    /*
-     * Unified boolean command for Camera + Flash:
-     *
-     * TRUE  -> Capture active (turn ON)
-     * FALSE -> Capture inactive (turn OFF)
-     * null  -> No output command
-     */
+    // Command indicating whether camera + flash should be active
     private Boolean captureActive;
 
-    /*
-     * Optional SpeedContext forwarded to the evidence packager.
-     * Null means "do not forward".
-     */
+    // Context forwarded to evidence packaging (null means "not forwarded")
     private SpeedContext speedContext;
 }

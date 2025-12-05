@@ -7,14 +7,18 @@ import org.springframework.stereotype.Service;
 import java.util.Optional;
 
 /*
- * Radar Data Collector
+ * RadarDataCollectorService
+ *
+ * Filters and normalizes raw radar measurements before they enter
+ * the CPS pipeline. Uses distance in meters to classify the vehicle
+ * into different zones (out-of-range, active monitoring, leaving),
+ * while preserving the original distance in miles for downstream use.
  *
  * Distance zones (meters):
- *
- *   d <= -150m          : OUT_OF_RANGE_BEFORE  → discard
- *   -150m < d <= 20m    : ACTIVE_MONITOR_ZONE  → always forward samples
- *   20m < d <= 90m      : LEAVING_ZONE         → forward ONLY the first sample that crosses >20m
- *   d > 90m             : OUT_OF_RANGE_AFTER   → discard and reset state
+ *   d <= -150m        : OUT_OF_RANGE_BEFORE  → discard
+ *   -150m < d <= 20m  : ACTIVE_MONITOR_ZONE  → always forward samples
+ *   20m < d <= 90m    : LEAVING_ZONE         → forward only the first sample crossing > 20m
+ *   d > 90m           : OUT_OF_RANGE_AFTER   → discard and reset state
  *
  * This implementation assumes a single tracked vehicle whose distance
  * increases monotonically as it passes the device.
@@ -22,8 +26,13 @@ import java.util.Optional;
 @Service
 public class RadarDataCollectorService {
 
+    // Minimum valid distance in meters (upstream boundary)
     private static final double MIN_VALID_DISTANCE_METERS = -150.0;
+
+    // Threshold in meters where capture window ends
     private static final double CAPTURE_STOP_THRESHOLD_METERS = 20.0;
+
+    // Maximum valid distance in meters (downstream boundary)
     private static final double MAX_VALID_DISTANCE_METERS = 90.0;
 
     // Internal state for the current tracked vehicle (in meters)
@@ -36,40 +45,41 @@ public class RadarDataCollectorService {
         this.unitConversionService = unitConversionService;
     }
 
+    /*
+     * Processes a single radar measurement and decides whether to
+     * forward a RadarSample into the pipeline or discard it.
+     */
     public Optional<RadarSample> processRadarData(RadarData radarData) {
         if (radarData == null) {
             return Optional.empty();
         }
 
-        // 外部输入是英里，这里显式拆成 miles 和 meters 两种表示
-        double distanceMiles  = radarData.getDistanceMiles();
+        // External input is in miles; convert to meters for zone checks
+        double distanceMiles = radarData.getDistanceMiles();
         double distanceMeters = unitConversionService.milesToMeters(distanceMiles);
-        double speedMph       = radarData.getSpeedMph();
+        double speedMph = radarData.getSpeedMph();
 
-        // 0. Too far upstream: d <= -150m → discard and reset state
+        // Too far upstream → discard and reset state
         if (distanceMeters <= MIN_VALID_DISTANCE_METERS) {
             resetState();
             return Optional.empty();
         }
 
-        // 4. Too far downstream: d > 90m → discard and reset state
+        // Too far downstream → discard and reset state
         if (distanceMeters > MAX_VALID_DISTANCE_METERS) {
             resetState();
             return Optional.empty();
         }
 
-        // 1. Active monitoring zone: -150m < d <= 20m
+        // Active monitoring zone: always forward samples
         if (distanceMeters <= CAPTURE_STOP_THRESHOLD_METERS) {
-            // In this zone we always forward samples
             RadarSample sample = buildSample(distanceMiles, speedMph);
-            // Update internal state (用 meters 记录轨迹位置)
             lastDistanceMeters = distanceMeters;
-            leavingEventSent = false; // still inside or before capture/stop threshold
+            leavingEventSent = false;
             return Optional.of(sample);
         }
 
-        // 2. Leaving zone: 20m < d <= 90m
-        // We only want to forward the FIRST sample that crosses from <=20m to >20m.
+        // Leaving zone: forward only the first sample crossing > 20m
         boolean justCrossedBoundary =
                 lastDistanceMeters != null
                         && lastDistanceMeters <= CAPTURE_STOP_THRESHOLD_METERS
@@ -77,29 +87,29 @@ public class RadarDataCollectorService {
                         && !leavingEventSent;
 
         if (justCrossedBoundary) {
-            // Forward ONE "leaving" sample so that ECC can issue stop-capture.
             RadarSample sample = buildSample(distanceMiles, speedMph);
             lastDistanceMeters = distanceMeters;
             leavingEventSent = true;
             return Optional.of(sample);
         }
 
-        // Already in leaving zone and we have sent the stop-capture event,
-        // or we started tracking when the vehicle was already >20m:
-        // do not forward any more samples.
+        // Already in leaving zone after stop-capture event,
+        // or started tracking when the vehicle was already > 20m
         lastDistanceMeters = distanceMeters;
         return Optional.empty();
     }
 
+    // Builds a RadarSample using the original distance in miles
     private RadarSample buildSample(double distanceMiles, double speedMph) {
         return RadarSample.builder()
-                .distanceMiles(distanceMiles)          // 这里是真正的“英里”值
+                .distanceMiles(distanceMiles)
                 .speedMph(speedMph)
                 .timestampMillis(System.currentTimeMillis())
                 .targetId(1L) // simplified single target
                 .build();
     }
 
+    // Resets internal tracking state for the next vehicle
     private void resetState() {
         lastDistanceMeters = null;
         leavingEventSent = false;

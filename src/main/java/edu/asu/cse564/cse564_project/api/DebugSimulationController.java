@@ -13,25 +13,27 @@ import java.util.Optional;
 /*
  * DebugSimulationController
  *
- * 调试 / 演示用控制器，用来串联整个 CPS 监控执法流水线：
+ * Provides debugging and demonstration endpoints that exercise the full
+ * CPS enforcement pipeline end-to-end:
  *
  *   RadarData -> RadarDataCollector -> RadarSample
- *   -> SpeedViolationController (SpeedStatus + SpeedContext)
- *   -> LEDDisplayController (LedCommand)
- *   -> EvidenceCaptureController (EvidenceCaptureResult: captureActive + SpeedContext)
- *   -> CameraDataCollector -> CameraData
- *   -> ANPR (PlateInfo)
- *   -> EvidenceCollectorAndPackager (ViolationRecord)
- *   -> BackendUplinkController (UploadStatus)
+ *     -> SpeedViolationController (SpeedStatus + SpeedContext)
+ *     -> LEDDisplayController (LedCommand)
+ *     -> EvidenceCaptureController (EvidenceCaptureResult)
+ *     -> CameraDataCollector -> CameraData
+ *     -> ANPR (PlateInfo)
+ *     -> EvidenceCollectorAndPackager (ViolationRecord)
+ *     -> BackendUplinkController (UploadStatus)
  *
- * 物理距离（单位：米）区间设定：
+ * The controller also exposes a parametric endpoint to test different
+ * speed and distance combinations and see how they map into zones:
  *
- *   d <= -150m                : OUT_OF_RANGE_BEFORE  → Radar 丢弃，不进入后续逻辑
- *   -150m < d <= -90m         : COARSE_ONLY          → SVC 只做粗测超速，不向 ECC 输出上下文
- *   -90m < d <= -20m          : MONITOR_ONLY         → 正式测速监测区，超速则给 LED & ECC
- *   -20m < d < 20m            : CAPTURE_WINDOW       → 抓拍取证窗口，ECC 抓拍
- *   d >= 20m 且 d <= 90m      : LEAVING_STOP_CAPTURE → 离开抓拍区，ECC 停止抓拍（仅第一次 >20m 的样本会向后传）
- *   d > 90m                   : OUT_OF_RANGE_AFTER   → Radar 丢弃并 reset 状态
+ *   d <= -150m              : OUT_OF_RANGE_BEFORE
+ *   -150m < d <= -90m       : COARSE_ONLY
+ *   -90m < d <= -20m        : MONITOR_ONLY
+ *   -20m < d < 20m          : CAPTURE_WINDOW
+ *   20m <= d <= 90m         : LEAVING_STOP_CAPTURE
+ *   d > 90m                 : OUT_OF_RANGE_AFTER
  */
 @RestController
 public class DebugSimulationController {
@@ -69,13 +71,13 @@ public class DebugSimulationController {
     }
 
     // ============================================================
-    // 1) 固定“超速违法完整流程” sanity check
+    // 1) Fixed overspeed scenario – full violation pipeline sanity check
     // ============================================================
     @GetMapping("/api/debug/simulate")
     public Map<String, Object> simulateOneViolation() {
         Map<String, Object> result = new LinkedHashMap<>();
 
-        // 设备附近（0m）+ 超速
+        // Near the device (0 m) with overspeed
         RadarData radarData = RadarData.builder()
                 .distanceMiles(0.0)
                 .speedMph(50.0)
@@ -172,7 +174,7 @@ public class DebugSimulationController {
     }
 
     // ============================================================
-    // 2) 正常行驶测试（不超速）
+    // 2) Normal driving test (no overspeed)
     // ============================================================
     @GetMapping("/api/debug/simulateNormal")
     public Map<String, Object> simulateNormalDriving(
@@ -209,7 +211,7 @@ public class DebugSimulationController {
     }
 
     // ============================================================
-    // 3) 速度 + 距离组合测试（核心）
+    // 3) Parametric speed + distance test (core debugging endpoint)
     // ============================================================
     @GetMapping("/api/debug/simulateCase")
     public Map<String, Object> simulateCustomCase(
@@ -218,7 +220,7 @@ public class DebugSimulationController {
     ) {
         Map<String, Object> result = new LinkedHashMap<>();
 
-        // 使用统一的转换服务 miles -> meters
+        // Convert miles to meters using the shared conversion service
         double distanceMeters = unitConversionService.milesToMeters(distanceMiles);
 
         final double MIN_VALID_METERS = -150.0;
@@ -278,7 +280,7 @@ public class DebugSimulationController {
         result.put("isOverspeed", overspeedContextPresent);
         result.put("ledMessage", ledCommand.getMessage());
 
-        // 不超速或还在粗测区：不进入 ECC / 证据链路
+        // No overspeed context or coarse-only region → evidence pipeline not triggered
         if (!overspeedContextPresent) {
             result.put("reason", "Not overspeed or still in coarse-only zone; ECC and evidence pipeline not triggered.");
             result.put("captureActive", null);
@@ -287,7 +289,7 @@ public class DebugSimulationController {
             return result;
         }
 
-        // 3) ECC
+        // 3) EvidenceCaptureController
         SpeedContext speedContext = maybeCtx.get();
         EvidenceCaptureResult eccResult = evidenceCaptureControllerService.handleSpeedContext(speedContext);
         Boolean captureActive = eccResult.getCaptureActive();
@@ -296,7 +298,7 @@ public class DebugSimulationController {
         result.put("stage", "EvidenceCaptureController");
         result.put("captureActive", captureActive);
 
-        // A: 还未进入抓拍窗口（distance <= -20m）→ ECC 不改状态，不转发上下文
+        // Before capture window
         if (captureActive == null && ctxForPackager == null) {
             result.put("reason", "Overspeed but before capture window; ECC does not change capture state.");
             result.put("violationRecordPresent", false);
@@ -304,7 +306,7 @@ public class DebugSimulationController {
             return result;
         }
 
-        // B: 已离开抓拍区（distance >= 20m）→ ECC 停止抓拍，不转发上下文
+        // After capture window (leaving side)
         if (Boolean.FALSE.equals(captureActive) && ctxForPackager == null) {
             result.put("reason", "Overspeed but outside capture window on leaving side; ECC stops capture.");
             result.put("violationRecordPresent", false);
@@ -312,7 +314,7 @@ public class DebugSimulationController {
             return result;
         }
 
-        // C: 在抓拍窗内（-20m < d < 20m）→ 完整证据链路
+        // Inside capture window → full evidence pipeline
         if (Boolean.TRUE.equals(captureActive) && ctxForPackager != null) {
             result.put("reason", "Overspeed inside capture window; full evidence pipeline triggered.");
 
@@ -369,7 +371,7 @@ public class DebugSimulationController {
             return result;
         }
 
-        // 到这里就说明状态组合不符合预期
+        // Fallback: unexpected ECC combination
         result.put("reason", "Unexpected ECC state combination.");
         result.put("violationRecordPresent", false);
         result.put("uploadSuccess", false);

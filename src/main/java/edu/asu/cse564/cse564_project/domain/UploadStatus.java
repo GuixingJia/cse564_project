@@ -6,14 +6,11 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /*
- * Result of attempting to upload a ViolationRecord to the
- * Central Backend System.
+ * UploadStatus
  *
- * 对应设计中的 Backend Up Link Controller 对外可见的输出状态：
- *   - 是否上传成功
- *   - 后端返回的记录ID（如果有）
- *   - 重试次数
- *   - 描述信息
+ * Represents the result of attempting to upload a ViolationRecord to the
+ * central backend system. Used by the BackendUplinkController to report
+ * success, generated backend record ID, retry attempts, and a debug message.
  */
 @Data
 @Builder
@@ -21,29 +18,18 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class UploadStatus {
 
-    /*
-     * Whether the upload is considered successful.
-     */
+    // Indicates whether the upload operation was successful
     private boolean success;
 
-    /*
-     * Optional backend-assigned identifier for the violation
-     * after it is stored in the central system.
-     */
+    // Backend-assigned identifier for the stored violation (if any)
     private String backendRecordId;
 
-    /*
-     * Number of retry attempts that were performed before success/failure.
-     */
+    // Number of retry attempts performed before the final result
     private int retryCount;
 
-    /*
-     * Human-readable message for logging/debug.
-     */
+    // Human-readable diagnostic or status message
     private String message;
 
-    /*
-     * Timestamp when this upload attempt completed, in ms since epoch.
-     */
+    // Timestamp of when the upload attempt completed (ms since epoch)
     private long timestampMillis;
 }

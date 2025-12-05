@@ -6,13 +6,15 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /*
- * Enriched radar sample produced by the RadarDataCollector.
- * This corresponds to the event that is forwarded to the
- * SpeedViolationController after basic filtering:
- *   - distance (miles)
- *   - speed (mph)
- *   - timestamp (ms since epoch)
- *   - targetId (simple sequence in this project)
+ * RadarSample
+ *
+ * Represents a processed radar measurement produced by the
+ * RadarDataCollector. This enriched structure is forwarded to
+ * the SpeedViolationController and contains the key attributes
+ * needed for speed evaluation and zone-based logic.
+ *
+ * Includes distance (miles), speed (mph), timestamp, and a
+ * simple target identifier used to link measurements together.
  */
 @Data
 @Builder
@@ -20,23 +22,15 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class RadarSample {
 
-   // Distance from the radar to the vehicle, in miles.
+    // Vehicle distance from the radar (miles)
     private double distanceMiles;
 
-    // Vehicle speed in miles per hour (mph).
+    // Vehicle speed (mph)
     private double speedMph;
 
-    /*
-     * Timestamp in milliseconds since Unix epoch.
-     * In this project, we assume clocks are synchronized.
-     */
+    // Timestamp of radar measurement (ms since epoch)
     private long timestampMillis;
 
-    /*
-     * Simple monotonically increasing ID used to distinguish
-     * different detected vehicles (or trajectories).
-     * In a real system this would come from the radar itself,
-     * but here we approximate in software.
-     */
+    // Identifier for the tracked vehicle or trajectory
     private long targetId;
 }

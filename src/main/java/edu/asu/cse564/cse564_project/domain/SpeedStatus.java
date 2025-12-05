@@ -6,16 +6,12 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /*
- * Output to the LEDDisplayController.
+ * SpeedStatus
  *
- * 对应事件：
- *   event(SpeedStatus) speed_status
- *   speed_status > svc_out_led, led_ctrl_in
- *
- * 包含：
- *  - 当前速度（mph）
- *  - 当前距离（mile）
- *  - 是否超速（布尔）
+ * Represents real-time speed information to be consumed by the
+ * LEDDisplayController. This event is always generated regardless
+ * of monitoring zone and provides the current speed, distance, and
+ * overspeed status for visual feedback to drivers.
  */
 @Data
 @Builder
@@ -23,19 +19,12 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class SpeedStatus {
 
-    /*
-     * Current vehicle speed in miles per hour (mph).
-     */
+    // Current vehicle speed (mph)
     private double speedMph;
 
-    /*
-     * Longitudinal distance from the device, in miles.
-     */
+    // Current longitudinal distance from the radar unit (miles)
     private double distanceMiles;
 
-    /*
-     * Whether the current speed is considered overspeed
-     * (>= speed limit + tolerance).
-     */
+    // Whether the measured speed qualifies as overspeed
     private boolean overspeed;
 }

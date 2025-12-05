@@ -8,32 +8,23 @@ import org.springframework.stereotype.Service;
 import java.util.Optional;
 
 /*
- * Speed Violation Controller
+ * SpeedViolationControllerService
  *
- * - 输入：RadarSample（来自 RadarDataCollector）
- * - 输出：
- *      event(SpeedStatus) speed_status  → ALWAYS (for LED)
- *      event(SpeedContext) overspeed_ctx → ONLY when overspeed AND within monitoring zone
- *
- * 距离逻辑（基于 distanceMeters）：
- *
- *   d <= -150m                  : 已被 Radar 丢弃（不会进入本组件）
- *   -150m < d <= -90m (coarse)  : 只做超速判定，不向 ECC 输出上下文
- *   -90m < d        (monitor)   : 若超速 → 输出 SpeedContext 给 ECC
- *
- * 抓拍窗口 (-20m, 20m) 和 d >= 20m 的停止抓拍，由 ECC 再细分处理。
+ * Evaluates radar samples to determine overspeed conditions.
+ * Always produces SpeedStatus for LED display.
+ * Produces SpeedContext only when overspeed occurs within the active monitoring zone.
+ * Monitoring zones are defined based on distance in meters.
  */
 @Service
 public class SpeedViolationControllerService {
 
-    // Base speed limit in mph (e.g., construction zone limit).
+    // Base allowed speed in mph
     private static final double SPEED_LIMIT_MPH = 40.0;
 
-    // Tolerance ratio (10% over the speed limit).
+    // Overspeed tolerance (10%)
     private static final double TOLERANCE_RATIO = 0.10;
 
-    // Boundary between "coarse-only" and "active monitoring" (in meters).
-    // Radar 已保证 d > -150m，这里再把 -90m 作为 SVC/ECC 开始工作的下界。
+    // Lower boundary for the monitoring zone (meters)
     private static final double MONITOR_ZONE_START_METERS = -90.0;
 
     private final UnitConversionService unitConversionService;
@@ -43,8 +34,8 @@ public class SpeedViolationControllerService {
     }
 
     /*
-     * Build SpeedStatus for LED Display.
-     * Always generated regardless of distance (LED 控制器可以再根据距离决定是否显示).
+     * Build SpeedStatus for LED display.
+     * Always produced regardless of distance.
      */
     public SpeedStatus buildSpeedStatus(RadarSample sample) {
         boolean overspeed = isOverspeed(sample.getSpeedMph());
@@ -56,12 +47,9 @@ public class SpeedViolationControllerService {
     }
 
     /*
-     * Build SpeedContext only when:
-     *   - overspeed, AND
-     *   - distanceMeters > MONITOR_ZONE_START_METERS (i.e., beyond -90m)
-     *
-     * 在粗测区 (-150m, -90m] 内，即使超速也不会产生 SpeedContext，
-     * 数据只停留在 SpeedStatus / 后端统计，不触发 ECC。
+     * Build SpeedContext only if:
+     *   - speed is overspeed, and
+     *   - distanceMeters > MONITOR_ZONE_START_METERS
      */
     public Optional<SpeedContext> buildOverspeedContext(RadarSample sample) {
         boolean overspeed = isOverspeed(sample.getSpeedMph());
@@ -72,11 +60,12 @@ public class SpeedViolationControllerService {
         double distanceMiles = sample.getDistanceMiles();
         double distanceMeters = unitConversionService.milesToMeters(distanceMiles);
 
-        // In the "coarse-only" region, do not send context to ECC.
+        // Coarse-only region: do not generate SpeedContext
         if (distanceMeters <= MONITOR_ZONE_START_METERS) {
             return Optional.empty();
         }
 
+        // Construct SpeedContext for ECC and evidence pipeline
         SpeedContext ctx = SpeedContext.builder()
                 .overspeed(true)
                 .speedMph(sample.getSpeedMph())
@@ -89,10 +78,7 @@ public class SpeedViolationControllerService {
         return Optional.of(ctx);
     }
 
-    /*
-     * overspeed 条件：
-     *   speed >= SPEED_LIMIT_MPH * (1 + TOLERANCE_RATIO)
-     */
+    // Determines whether the given speed is above the overspeed threshold.
     private boolean isOverspeed(double speedMph) {
         double threshold = SPEED_LIMIT_MPH * (1.0 + TOLERANCE_RATIO);
         return speedMph >= threshold;

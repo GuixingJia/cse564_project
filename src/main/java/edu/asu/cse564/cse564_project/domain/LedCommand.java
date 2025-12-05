@@ -5,15 +5,16 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/**
- * Command object sent from the LEDDisplayController to the physical LED display.
- *   event(LedCommand) led_cmd
- *   led_cmd > led_ctrl_out, led_disp_in
- * 这里把要展示的信息格式化成字符串，同时保留一些原始字段：
- *  - speedMph       当前速度
- *  - distanceMiles  当前距离
- *  - overspeed      是否超速
- *  - message        最终要显示在 LED 上的文本
+/*
+ * LedCommand
+ *
+ * Represents the formatted output sent from the LEDDisplayController
+ * to the physical roadside LED display. It carries both raw values
+ * (speed, distance, overspeed status) and the final message string
+ * that will be shown to the driver.
+ *
+ * Used for visual feedback such as "Speed: 35 mph - OK" or
+ * "OVERSPEED: 52 mph - SLOW DOWN".
  */
 @Data
 @Builder
@@ -21,21 +22,15 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class LedCommand {
 
-
-     // Current vehicle speed in mph.
+    // Current vehicle speed (mph)
     private double speedMph;
 
-    // Distance from the radar in miles.
+    // Current distance from radar (miles)
     private double distanceMiles;
 
-    // Whether the vehicle is overspeed.
+    // Whether the vehicle is overspeed
     private boolean overspeed;
 
-    /*
-     * Text message to be shown on the LED display.
-     * Example:
-     *   "Speed: 38 mph - OK"
-     *   "OVERSPEED: 52 mph - SLOW DOWN"
-     */
+    // Final text message displayed on the LED screen
     private String message;
 }

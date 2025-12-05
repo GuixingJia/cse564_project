@@ -6,9 +6,12 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /*
- * Result of ANPR (Automatic Number Plate Recognition).
- * 在当前实现中，这只是一个模拟结构：
- *  - system 会从一个静态车牌号列表中随机选一个返回。
+ * PlateInfo
+ *
+ * Represents the output of an ANPR (Automatic Number Plate Recognition)
+ * operation. In this project, the ANPR processing is simulated and the
+ * plate number is selected from a predefined list rather than extracted
+ * from image data.
  */
 @Data
 @Builder
@@ -16,9 +19,9 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class PlateInfo {
 
-    // Randomly chosen license plate number.
+    // Recognized (simulated) license plate number
     private String plateNumber;
 
-    // Timestamp of when this ANPR result was produced.
+    // Timestamp when this ANPR result was generated (ms since epoch)
     private long timestampMillis;
 }

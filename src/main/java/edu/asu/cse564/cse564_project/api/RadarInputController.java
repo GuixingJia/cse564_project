@@ -8,20 +8,24 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
-/**
- * Realistic Radar Input Endpoint
+/*
+ * RadarInputController
  *
- * This controller simulates the real CPS pipeline:
+ * Provides a realistic POST-based entrypoint for radar sensor input.
+ * This controller simulates the complete CPS enforcement pipeline:
  *
- * RadarData (POST) ->
- * RadarDataCollector ->
- * SpeedViolationController (SpeedStatus + SpeedContext) ->
- * LEDDisplayController ->
- * EvidenceCaptureController ->
- * CameraDataCollector ->
- * ANPR Processor ->
- * EvidenceCollectorAndPackager ->
- * BackendUplinkController
+ *   RadarData (POST)
+ *     → RadarDataCollector
+ *     → SpeedViolationController (SpeedStatus + SpeedContext)
+ *     → LEDDisplayController
+ *     → EvidenceCaptureController
+ *     → CameraDataCollector
+ *     → ANPR Processor
+ *     → EvidenceCollectorAndPackager
+ *     → BackendUplinkController
+ *
+ * The endpoint returns a detailed JSON trace describing how the input
+ * propagates through each stage of the pipeline.
  */
 @RestController
 @RequestMapping("/api/radar")
@@ -56,10 +60,10 @@ public class RadarInputController {
         this.backendUplinkControllerService = backendUplinkControllerService;
     }
 
-    /**
+    /*
      * POST /api/radar/sample
      *
-     * Simulates a real radar sensor pushing a single measurement.
+     * Ingests a radar measurement and runs it through the full CPS chain.
      */
     @PostMapping("/sample")
     public Map<String, Object> ingestRadarSample(@RequestBody RadarData radarData) {
@@ -67,9 +71,9 @@ public class RadarInputController {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("input", radarData);
 
-        // ===========================
+        // -------------------------------
         // 1) Radar Data Collector
-        // ===========================
+        // -------------------------------
         Optional<RadarSample> maybeSample = radarDataCollectorService.processRadarData(radarData);
         if (maybeSample.isEmpty()) {
             result.put("accepted", false);
@@ -80,9 +84,9 @@ public class RadarInputController {
         RadarSample sample = maybeSample.get();
         result.put("radarSample", sample);
 
-        // ===========================
+        // -------------------------------
         // 2) Speed Violation Controller
-        // ===========================
+        // -------------------------------
         SpeedStatus speedStatus = speedViolationControllerService.buildSpeedStatus(sample);
         Optional<SpeedContext> maybeCtx =
                 speedViolationControllerService.buildOverspeedContext(sample);
@@ -90,11 +94,11 @@ public class RadarInputController {
         result.put("speedStatus", speedStatus);
         result.put("overspeedContextPresent", maybeCtx.isPresent());
 
-        // LED is always updated
+        // LED always receives updates
         LedCommand ledCommand = ledDisplayControllerService.buildLedCommand(speedStatus);
         result.put("ledMessage", ledCommand.getMessage());
 
-        // Normal driving (not overspeed or coarse-only zone)
+        // If no overspeed context exists, evidence pipeline is not triggered
         if (maybeCtx.isEmpty()) {
             result.put("accepted", true);
             result.put("stage", "SpeedViolationController");
@@ -105,34 +109,33 @@ public class RadarInputController {
 
         SpeedContext speedContext = maybeCtx.get();
 
-        // ===========================
+        // -------------------------------
         // 3) Evidence Capture Controller
-        // ===========================
+        // -------------------------------
         EvidenceCaptureResult eccResult =
                 evidenceCaptureControllerService.handleSpeedContext(speedContext);
 
         result.put("captureActive", eccResult.getCaptureActive());
         result.put("stage", "EvidenceCaptureController");
 
-        // Case A: Before capture window (distance <= -20m)
+        // Before capture window
         if (eccResult.getCaptureActive() == null && eccResult.getSpeedContext() == null) {
             result.put("reason", "Overspeed but before capture window.");
             return result;
         }
 
-        // Case B: Leaving capture window (distance >= 20m)
+        // Leaving capture window
         if (Boolean.FALSE.equals(eccResult.getCaptureActive()) &&
                 eccResult.getSpeedContext() == null) {
             result.put("reason", "Overspeed but outside capture window; ECC stopped capture.");
             return result;
         }
 
-        // Case C: Inside capture window
         SpeedContext ctxForPackager = eccResult.getSpeedContext();
 
-        // ===========================
+        // -------------------------------
         // 4) Camera frame (simulated)
-        // ===========================
+        // -------------------------------
         byte[] fakeImage = "fakeImageBytes".getBytes();
         CameraData rawFrame = CameraData.builder()
                 .imageBytes(fakeImage)
@@ -149,9 +152,9 @@ public class RadarInputController {
         }
         CameraData processedFrame = maybeFrame.get();
 
-        // ===========================
-        // 5) ANPR Plate Recognition
-        // ===========================
+        // -------------------------------
+        // 5) ANPR Processor
+        // -------------------------------
         Optional<PlateInfo> maybePlate = anprProcessorService.processFrame(processedFrame);
         if (maybePlate.isEmpty()) {
             result.put("stage", "ANPR");
@@ -160,9 +163,9 @@ public class RadarInputController {
         }
         PlateInfo plateInfo = maybePlate.get();
 
-        // ===========================
+        // -------------------------------
         // 6) Evidence Collector & Packager
-        // ===========================
+        // -------------------------------
         Optional<ViolationRecord> maybeRecord =
                 evidenceCollectorAndPackagerService.buildViolationRecord(
                         ctxForPackager,
@@ -177,9 +180,9 @@ public class RadarInputController {
         ViolationRecord record = maybeRecord.get();
         result.put("violationRecord", record);
 
-        // ===========================
+        // -------------------------------
         // 7) Backend Upload
-        // ===========================
+        // -------------------------------
         UploadStatus uploadStatus =
                 backendUplinkControllerService.uploadViolationRecord(record);
 
