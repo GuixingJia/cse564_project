@@ -38,8 +38,9 @@ OS			Windows / macOS / Linux
 3. How to Configure & Run
 
 You can simply use IEDA run src/main/resources/application.properties
-
 Or use the method below
+
+In application.properties, The road speed limit is currently set to 40 mph with a tolerance of 10%. If adjustments are needed, they can be made directly in this document.
 
 3.1 Clone the Repository
 Use IDEA
@@ -175,6 +176,7 @@ Example curl
 curl -X POST http://localhost:8080/api/radar/sample \
      -H "Content-Type: application/json" \
      -d '{"distanceMiles": -0.02, "speedMph": 50}'
+
 
 5. Internal Unit Behavior Summary
 

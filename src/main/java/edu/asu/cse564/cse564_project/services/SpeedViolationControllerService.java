@@ -3,6 +3,7 @@ package edu.asu.cse564.cse564_project.services;
 import edu.asu.cse564.cse564_project.domain.RadarSample;
 import edu.asu.cse564.cse564_project.domain.SpeedContext;
 import edu.asu.cse564.cse564_project.domain.SpeedStatus;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
@@ -14,23 +15,36 @@ import java.util.Optional;
  * Always produces SpeedStatus for LED display.
  * Produces SpeedContext only when overspeed occurs within the active monitoring zone.
  * Monitoring zones are defined based on distance in meters.
+ *
+ * Configuration:
+ *   The speed limit and overspeed tolerance are now configurable via
+ *   application.properties:
+ *
+ *     cps.speed.limit-mph=40.0
+ *     cps.speed.tolerance-ratio=0.10
  */
 @Service
 public class SpeedViolationControllerService {
 
-    // Base allowed speed in mph
-    private static final double SPEED_LIMIT_MPH = 40.0;
+    // Configurable base allowed speed in mph (from application.properties)
+    private final double speedLimitMph;
 
-    // Overspeed tolerance (10%)
-    private static final double TOLERANCE_RATIO = 0.10;
+    // Configurable overspeed tolerance ratio (e.g., 0.10 = 10%)
+    private final double toleranceRatio;
 
     // Lower boundary for the monitoring zone (meters)
     private static final double MONITOR_ZONE_START_METERS = -90.0;
 
     private final UnitConversionService unitConversionService;
 
-    public SpeedViolationControllerService(UnitConversionService unitConversionService) {
+    public SpeedViolationControllerService(
+            UnitConversionService unitConversionService,
+            @Value("${cps.speed.limit-mph:40.0}") double speedLimitMph,
+            @Value("${cps.speed.tolerance-ratio:0.10}") double toleranceRatio
+    ) {
         this.unitConversionService = unitConversionService;
+        this.speedLimitMph = speedLimitMph;
+        this.toleranceRatio = toleranceRatio;
     }
 
     /*
@@ -80,7 +94,7 @@ public class SpeedViolationControllerService {
 
     // Determines whether the given speed is above the overspeed threshold.
     private boolean isOverspeed(double speedMph) {
-        double threshold = SPEED_LIMIT_MPH * (1.0 + TOLERANCE_RATIO);
+        double threshold = speedLimitMph * (1.0 + toleranceRatio);
         return speedMph >= threshold;
     }
 }
